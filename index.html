@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payload Logic Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Custom scrollbar to match the original design */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569; 
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #64748b; 
+        }
+        body {
+            background-color: #0f172a; /* slate-900 */
+        }
+    </style>
+</head>
+<body class="text-slate-200 font-sans min-h-screen flex items-center justify-center p-4 md:p-8">
+
+    <div id="app" class="max-w-5xl w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Content will be injected here by JavaScript -->
+    </div>
+
+    <script>
+        // --- Configuration & Data ---
+        
+        const materials = {
+            iron: {
+                name: 'Iron (Fe)', density: 7874, valuePerKg: 0.5, type: 'standard',
+                color: 'text-blue-400', description: 'Standard construction material.'
+            },
+            gold: {
+                name: 'Gold (Au)', density: 19300, valuePerKg: 62000, type: 'standard',
+                color: 'text-yellow-400', description: 'Highly conductive precious metal.'
+            },
+            platinum: {
+                name: 'Platinum (Pt)', density: 21450, valuePerKg: 31000, type: 'standard',
+                color: 'text-slate-300', description: 'Dense catalyst metal.'
+            },
+            water: {
+                name: 'Water (H₂O)', density: 1000, valuePerKg: 5, type: 'pro',
+                color: 'text-cyan-200', description: 'Life support essential. Low density.'
+            },
+            titanium: {
+                name: 'Titanium (Ti)', density: 4506, valuePerKg: 15, type: 'pro',
+                color: 'text-gray-400', description: 'Aerospace alloy base. High strength.'
+            },
+            copper: {
+                name: 'Copper (Cu)', density: 8960, valuePerKg: 8, type: 'pro',
+                color: 'text-orange-400', description: 'Electronics & power transmission.'
+            },
+            tungsten: {
+                name: 'Tungsten (W)', density: 19250, valuePerKg: 45, type: 'pro',
+                color: 'text-stone-400', description: 'Heavy ballast & heat shielding.'
+            },
+            he3: {
+                name: 'Helium-3', density: 59, valuePerKg: 14000000, type: 'pro',
+                color: 'text-purple-400', description: 'Fusion fuel. Extreme value density.'
+            }
+        };
+
+        // --- State Management ---
+
+        let state = {
+            isPro: false,
+            oreType: 'iron',
+            unitSystem: 'metric',
+            massKg: 10000,
+            acceleration: 15
+        };
+
+        // --- Cookie Functions ---
+
+        function setCookie(name, value, days) {
+            let expires = "";
+            if (days) {
+                const date = new Date();
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+                expires = "; expires=" + date.toUTCString();
+            }
+            document.cookie = name + "=" + (JSON.stringify(value) || "") + expires + "; path=/";
+        }
+
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i=0;i < ca.length;i++) {
+                let c = ca[i];
+                while (c.charAt(0)==' ') c = c.substring(1,c.length);
+                if (c.indexOf(nameEQ) == 0) {
+                    try {
+                        return JSON.parse(c.substring(nameEQ.length,c.length));
+                    } catch (e) {
+                        return null;
+                    }
+                }
+            }
+            return null;
+        }
+
+        function saveState() {
+            setCookie("payload_config", state, 30); // Save for 30 days
+        }
+
+        function loadState() {
+            const savedState = getCookie("payload_config");
+            if (savedState) {
+                state = { ...state, ...savedState };
+                
+                // Integrity check: if not pro, revert pro-only settings
+                if (!state.isPro) {
+                    if (materials[state.oreType].type === 'pro') state.oreType = 'iron';
+                    state.unitSystem = 'metric';
+                }
+            }
+        }
+
+        // --- Logic Helpers ---
+
+        const getDisplayMass = () => {
+            return state.unitSystem === 'metric' ? state.massKg : state.massKg * 2.20462;
+        };
+
+        const formatNumber = (num) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(num);
+
+        const formatCurrency = (num) => {
+            if (num >= 1000000000) return (num / 1000000000).toFixed(2) + 'B';
+            if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+            if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+            return num.toFixed(0);
+        };
+
+        // --- Rendering ---
+
+        function render() {
+            const mat = materials[state.oreType];
+            const volume = state.massKg / mat.density;
+            const thrust = (state.massKg * state.acceleration) / 1000;
+            const value = state.massKg * mat.valuePerKg;
+
+            const app = document.getElementById('app');
+
+            // Generate Ore Buttons HTML
+            const oreButtonsHtml = Object.keys(materials).map((key) => {
+                const m = materials[key];
+                const locked = m.type === 'pro' && !state.isPro;
+                const active = state.oreType === key;
+                
+                let classes = "p-2 rounded border text-left text-xs font-semibold transition-all duration-200 relative overflow-hidden w-full ";
+                if (active) classes += "bg-cyan-500/20 border-cyan-400 text-cyan-300";
+                else if (locked) classes += "bg-slate-800/50 border-slate-700 text-slate-600 cursor-not-allowed";
+                else classes += "bg-slate-700 border-slate-600 text-slate-400 hover:bg-slate-600";
+
+                const symbol = m.name.match(/\(([^)]+)\)/)?.[1] || 'Mix';
+
+                return `
+                    <button
+                        onclick="updateOre('${key}')"
+                        ${locked ? 'disabled' : ''}
+                        class="${classes}"
+                    >
+                        <div class="flex justify-between items-center">
+                            <span>${m.name.split(' ')[0]}</span>
+                            ${locked ? '<i data-lucide="lock" class="w-3 h-3 text-slate-600"></i>' : ''}
+                        </div>
+                        <span class="text-[10px] opacity-50 font-mono block">${symbol}</span>
+                    </button>
+                `;
+            }).join('');
+
+            // HTML Template
+            app.innerHTML = `
+                <!-- Sidebar -->
+                <div class="lg:col-span-4 space-y-6">
+                    
+                    <!-- Brand Card -->
+                    <div class="border p-6 rounded-lg backdrop-blur-sm relative overflow-hidden group transition-all duration-300 ${state.isPro ? 'bg-slate-800/80 border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.15)]' : 'bg-slate-800/50 border-slate-700'}">
+                        <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                            <i data-lucide="database" class="w-16 h-16"></i>
+                        </div>
+                        <h1 class="text-2xl font-bold tracking-wider text-cyan-400 uppercase flex items-center gap-2">
+                            <i data-lucide="activity" class="w-6 h-6 animate-pulse"></i>
+                            Payload Logic
+                            ${state.isPro ? '<span class="text-xs bg-cyan-500 text-black px-1.5 py-0.5 rounded font-black transform -translate-y-2">PRO</span>' : ''}
+                        </h1>
+                        <p class="text-xs text-slate-400 mt-1 tracking-widest uppercase">Logistics Division // ${state.isPro ? 'Advanced' : 'Standard'} Calc</p>
+                        
+                        ${!state.isPro ? `
+                            <button 
+                                onclick="togglePro()"
+                                class="mt-6 w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white p-3 rounded-md flex items-center justify-center gap-2 font-bold shadow-lg transition-all transform hover:scale-105"
+                            >
+                                <i data-lucide="lock" class="w-4 h-4"></i> Upgrade Station ($5)
+                            </button>
+                        ` : `
+                            <div class="mt-6 flex items-center gap-2 text-emerald-400 text-xs font-mono bg-emerald-900/20 p-2 rounded border border-emerald-900/50">
+                                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> LICENSE VERIFIED: PRO_USER_01
+                            </div>
+                        `}
+                    </div>
+
+                    <!-- Parameters Card -->
+                    <div class="bg-slate-800/80 border border-slate-600 p-6 rounded-lg shadow-xl">
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-sm font-semibold text-slate-300 uppercase flex items-center gap-2">
+                                <i data-lucide="settings" class="w-4 h-4"></i> Parameters
+                            </h2>
+                            ${state.isPro ? `
+                                <button 
+                                    onclick="toggleUnit()"
+                                    class="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-cyan-400 border border-slate-600 transition-colors"
+                                >
+                                    Unit: ${state.unitSystem}
+                                </button>
+                            ` : ''}
+                        </div>
+
+                        <!-- Ore Selector -->
+                        <div class="mb-6">
+                            <label class="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wide">
+                                Material Classification
+                            </label>
+                            <div class="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                                ${oreButtonsHtml}
+                            </div>
+                            <div class="mt-3 text-xs text-slate-400 italic bg-slate-900/50 p-2 rounded border border-slate-700/50 min-h-[3rem]">
+                                ${materials[state.oreType].description}
+                            </div>
+                        </div>
+
+                        <!-- Mass Input -->
+                        <div class="mb-6">
+                            <div class="flex justify-between items-end mb-2">
+                                <label class="block text-xs font-medium text-slate-400 uppercase tracking-wide">
+                                    Payload Mass
+                                </label>
+                                <span class="text-cyan-400 font-mono text-lg">
+                                    ${formatNumber(getDisplayMass())} <span class="text-sm">${state.unitSystem === 'metric' ? 'kg' : 'lbs'}</span>
+                                </span>
+                            </div>
+                            <input
+                                type="range"
+                                min="${state.unitSystem === 'metric' ? 1000 : 2200}"
+                                max="${state.unitSystem === 'metric' ? 100000 : 220000}"
+                                step="${state.unitSystem === 'metric' ? 1000 : 2200}"
+                                value="${getDisplayMass()}"
+                                oninput="updateMass(this.value)"
+                                class="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+                            />
+                            <div class="flex justify-between text-xs text-slate-500 mt-1 font-mono">
+                                <span>Min</span>
+                                <span>Max</span>
+                            </div>
+                        </div>
+
+                        <!-- Acceleration Toggle -->
+                        <div>
+                            <div class="flex justify-between items-end mb-2">
+                                <label class="block text-xs font-medium text-slate-400 uppercase tracking-wide">
+                                    Lift Profile
+                                </label>
+                                <span class="text-orange-400 font-mono text-sm">${state.acceleration} m/s²</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button 
+                                    onclick="updateAccel(15)"
+                                    class="flex-1 text-xs py-1.5 rounded border ${state.acceleration === 15 ? 'border-orange-500 bg-orange-500/10 text-orange-400' : 'border-slate-600 text-slate-500'}"
+                                >
+                                    Standard
+                                </button>
+                                <button 
+                                    onclick="updateAccel(25)"
+                                    class="flex-1 text-xs py-1.5 rounded border ${state.acceleration === 25 ? 'border-orange-500 bg-orange-500/10 text-orange-400' : 'border-slate-600 text-slate-500'}"
+                                >
+                                    Heavy Lift
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Visualization & Results -->
+                <div class="lg:col-span-8 space-y-4">
+                    
+                    <!-- Main Visualizer -->
+                    <div class="bg-slate-900 border-2 border-slate-700 rounded-lg p-1 h-64 relative flex items-center justify-center overflow-hidden">
+                        <div class="absolute inset-0 opacity-20" 
+                            style="background-image: linear-gradient(rgba(34, 211, 238, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(34, 211, 238, 0.1) 1px, transparent 1px); background-size: 20px 20px;">
+                        </div>
+                        
+                        <!-- Cargo Visual -->
+                        <div class="relative z-10 flex flex-col items-center justify-center transition-all duration-500"
+                            style="transform: scale(${1 + (volume / (state.oreType === 'he3' ? 2000 : 50))})">
+                            <i data-lucide="box" class="w-24 h-24 drop-shadow-2xl transition-colors duration-500 ${materials[state.oreType].color}" style="stroke-width: 1;"></i>
+                            <div class="absolute -bottom-10 text-xs font-mono text-slate-400 whitespace-nowrap bg-slate-900/80 px-2 py-1 rounded">
+                                ${materials[state.oreType].name}
+                            </div>
+                        </div>
+
+                        ${state.isPro ? `
+                            <div class="absolute top-4 left-4 font-mono text-xs space-y-1">
+                                <div class="text-slate-500">DENSITY SCAN</div>
+                                <div class="${materials[state.oreType].color}">
+                                    ${materials[state.oreType].density} kg/m³
+                                </div>
+                            </div>
+                        ` : ''}
+                    </div>
+
+                    <!-- Metric Cards -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        
+                        <!-- Volume Card -->
+                        <div class="bg-slate-800 p-4 rounded-lg border-l-4 border-blue-500 shadow-lg relative overflow-hidden group">
+                            <div class="absolute top-2 right-2 text-slate-600 group-hover:text-blue-500 transition-colors"><i data-lucide="box" class="w-5 h-5"></i></div>
+                            <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Volume Disp.</div>
+                            <div class="text-2xl font-mono font-bold text-white">
+                                ${formatNumber(volume)} <span class="text-sm text-slate-500">m³</span>
+                            </div>
+                            ${state.isPro && state.unitSystem === 'imperial' ? `
+                                <div class="mt-1 text-xs text-blue-400 font-mono">
+                                    ≈ ${formatNumber(volume * 35.3147)} ft³
+                                </div>
+                            ` : ''}
+                        </div>
+
+                        <!-- Thrust Card -->
+                        <div class="bg-slate-800 p-4 rounded-lg border-l-4 border-orange-500 shadow-lg relative overflow-hidden group">
+                            <div class="absolute top-2 right-2 text-slate-600 group-hover:text-orange-500 transition-colors"><i data-lucide="rocket" class="w-5 h-5"></i></div>
+                            <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Thrust Req.</div>
+                            <div class="text-2xl font-mono font-bold text-white">
+                                ${formatNumber(thrust)} <span class="text-sm text-slate-500">kN</span>
+                            </div>
+                            <div class="mt-2 text-xs text-orange-400">
+                                Efficiency: ${(thrust / (state.massKg/1000)).toFixed(1)} kN/t
+                            </div>
+                        </div>
+
+                        <!-- Value Card -->
+                        <div class="bg-slate-800 p-4 rounded-lg border-l-4 border-emerald-500 shadow-lg relative overflow-hidden group">
+                            <div class="absolute top-2 right-2 text-slate-600 group-hover:text-emerald-500 transition-colors"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div>
+                            <div class="text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">Est. Value</div>
+                            <div class="text-2xl font-mono font-bold text-white truncate">
+                                <span class="text-emerald-500 text-lg mr-1">₡</span>
+                                ${formatCurrency(value)}
+                            </div>
+                            ${state.isPro ? `
+                                <div class="mt-2 text-xs text-emerald-400 flex items-center gap-1">
+                                    <i data-lucide="activity" class="w-3 h-3"></i> Market: Volatile
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- Action Footer -->
+                    <div class="bg-slate-800/50 p-4 rounded-lg border border-slate-700 flex items-center justify-between">
+                        <div class="flex items-center gap-3 text-slate-400 text-sm">
+                            <i data-lucide="info" class="w-4 h-4"></i>
+                            ${state.isPro ? 
+                                '<span><span class="text-cyan-400">Pro Mode Active.</span> Advanced density calculations enabled.</span>' : 
+                                '<span>Standard Mode. Upgrade for extended element library.</span>'
+                            }
+                        </div>
+                        <button class="bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded text-sm font-semibold transition-all shadow-lg shadow-cyan-900/20 hover:shadow-cyan-500/30 flex items-center gap-2">
+                            ${state.isPro ? '<i data-lucide="zap" class="w-3.5 h-3.5" fill="currentColor"></i>' : ''}
+                            ${state.isPro ? 'Transmit Encrypted Manifest' : 'Export Manifest'}
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Re-initialize icons after DOM update
+            lucide.createIcons();
+        }
+
+        // --- Interaction Handlers ---
+
+        window.togglePro = () => {
+            state.isPro = !state.isPro;
+            if (!state.isPro) {
+                // Reset standard settings if downgrading
+                if (materials[state.oreType].type === 'pro') state.oreType = 'iron';
+                state.unitSystem = 'metric';
+            }
+            saveState();
+            render();
+        };
+
+        window.toggleUnit = () => {
+            state.unitSystem = state.unitSystem === 'metric' ? 'imperial' : 'metric';
+            saveState();
+            render();
+        };
+
+        window.updateOre = (type) => {
+            state.oreType = type;
+            saveState();
+            render();
+        };
+
+        window.updateAccel = (val) => {
+            state.acceleration = val;
+            saveState();
+            render();
+        };
+
+        window.updateMass = (val) => {
+            if (state.unitSystem === 'metric') {
+                state.massKg = parseInt(val);
+            } else {
+                state.massKg = parseInt(val) / 2.20462;
+            }
+            saveState();
+            // We can just re-render, or for performance only update specific nodes
+            // But re-render is fine for this scale.
+            render();
+        };
+
+        // --- Init ---
+        loadState();
+        render();
+
+    </script>
+</body>
+</html>
